@@ -1,48 +1,51 @@
-import os, uuid, datetime
+# app.py
+import os
+import requests
 import streamlit as st
-from gas_client import gas_get, gas_post, upload_file
 
-st.set_page_config(page_title="Free Stack: Streamlit × GAS × Google", page_icon="🧩", layout="centered")
+st.set_page_config(page_title="Streamlit → GAS → Sheets", layout="centered")
 
-# secrets を環境変数に反映（Community Cloud では自動で入ります）
-os.environ.setdefault("GAS_URL", st.secrets["GAS_URL"])
-os.environ.setdefault("SHARED_SECRET", st.secrets["SHARED_SECRET"])
+DEFAULT_URL = os.environ.get("GAS_URL", "")  # 環境変数でも指定可
+gas_url = st.text_input("GAS Web App URL (/exec)", value=DEFAULT_URL, placeholder="https://script.google.com/macros/s/.../exec")
 
-st.title("🧩 無料スタック：Streamlit × GAS × Google")
+colA, colB, colC = st.columns(3)
 
-with st.expander("接続テスト", expanded=False):
-    try:
-        health = gas_get("health")
-        st.success(f"OK: {health}")
-    except Exception as e:
-        st.error(f"GAS接続エラー: {e}")
-
-st.subheader("✅ TODO（Sheets）")
-with st.form("todo_add", clear_on_submit=True):
-    title = st.text_input("タイトル", placeholder="やること…")
-    submitted = st.form_submit_button("追加")
-    if submitted and title.strip():
-        payload = {
-            "id": str(uuid.uuid4()),
-            "title": title.strip(),
-            "done": False,
-            "created_at": datetime.datetime.utcnow().isoformat() + "Z",
-        }
-        res = gas_post("add_todo", payload)
-        if res.get("ok"):
-            st.success("追加しました")
+with colA:
+    if st.button("Health (GET)"):
+        if not gas_url:
+            st.error("URL を入力してください")
         else:
-            st.error(f"失敗: {res}")
+            try:
+                r = requests.get(gas_url, params={"action": "health"}, timeout=10)
+                st.write("status:", r.status_code)
+                st.json(r.json())
+            except Exception as e:
+                st.error(str(e))
 
-if st.button("最新のTODOを読む"):
-    data = gas_get("list_todos")
-    st.write(data.get("items", []))
+with colB:
+    read_range = st.text_input("Read range (A1)", value="A1")
+    if st.button("Read (GET)"):
+        if not gas_url:
+            st.error("URL を入力してください")
+        else:
+            try:
+                r = requests.get(gas_url, params={"action": "read", "range": read_range}, timeout=10)
+                st.write("status:", r.status_code)
+                st.json(r.json())
+            except Exception as e:
+                st.error(str(e))
 
-st.subheader("📦 ファイルアップロード（Drive）")
-file = st.file_uploader("ファイルを選択", type=None)
-if file is not None:
-    res = upload_file(file.name, file.read(), file.type)
-    if res.get("ok"):
-        st.success(f"アップロード完了: {res.get('name')} (id={res.get('fileId')})")
-    else:
-        st.error(f"失敗: {res}")
+with colC:
+    write_range = st.text_input("Write range (A1)", value="A1")
+    write_value = st.text_input("Write value", value="hello")
+    if st.button("Write (POST)"):
+        if not gas_url:
+            st.error("URL を入力してください")
+        else:
+            try:
+                payload = {"action": "write", "value": write_value, "range": write_range}
+                r = requests.post(gas_url, json=payload, timeout=10)
+                st.write("status:", r.status_code)
+                st.json(r.json())
+            except Exception as e:
+                st.error(str(e))
